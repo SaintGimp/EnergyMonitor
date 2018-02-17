@@ -14,7 +14,7 @@
 #ifndef __ATM90E26_SPI_H__
 #define __ATM90E26_SPI_H__
 
-#include "ATM90E26.h"
+#include "ATM90E26_Transport.h"
 
 // pins used for the connection with the sensor
 // the other you need are controlled by the SPI library):
@@ -39,7 +39,7 @@ const int energy_CS = 10; // 32u4 SS pin
 const int energy_CS = SS; // Use default SS pin for unknown Arduino
 #endif
 
-class ATM90E26_SPI : public ATM90E26
+class ATM90E26_SPI : public ATM90E26_Transport
 {
 	public:
 		ATM90E26_SPI(int pin = energy_CS);

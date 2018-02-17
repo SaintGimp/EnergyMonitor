@@ -1,5 +1,4 @@
 #include "ESP8266WiFi.h"
-#include <SPI.h>
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -12,9 +11,9 @@ Adafruit_SSD1306 display(OLED_RESET);
 #endif
 
 #include "ATM90E26_SPI.h"
-#include "EnergyIC.h"
-ATM90E26_SPI atm90e26;
-EnergyIC eic(atm90e26);
+#include "ATM90E26.h"
+ATM90E26_SPI atm90e26_spi;
+ATM90E26 atm90e26(atm90e26_spi);
 
 void setup()
 {
@@ -34,7 +33,7 @@ void setup()
   display.setTextColor(WHITE);
   display.display();
 
-  EnergyIC_CalibrationSettings settings;
+  ATM90E26_CalibrationSettings settings;
   settings.referenceVoltage_volts = 120;
   settings.baseCurrent_amps = 7;
   settings.currentTransformerRange_amps = 100;
@@ -49,16 +48,16 @@ void setup()
   settings.actualMainsCurrent_amps = 7.09;
   settings.reportedCurrent_amps = 7.7;
 
-  eic.Initialize(settings);
+  atm90e26.Initialize(settings);
 }
 
 void loop()
 {
-  double lineVoltage = eic.GetLineVoltage();
-  double lineCurrent = eic.GetLineCurrent();
-  double activePower = eic.GetActivePower();
-  double powerFactor = eic.GetPowerFactor();
-  double importedEnergy = eic.GetImportEnergy() * 1000;
+  double lineVoltage = atm90e26.GetLineVoltage();
+  double lineCurrent = atm90e26.GetLineCurrent();
+  double activePower = atm90e26.GetActivePower();
+  double powerFactor = atm90e26.GetPowerFactor();
+  double importedEnergy = atm90e26.GetImportEnergy() * 1000;
 
   displayReading("Voltage: ", lineVoltage);
   displayReading("Current: ", lineCurrent);

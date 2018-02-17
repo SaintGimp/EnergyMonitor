@@ -3,25 +3,39 @@
         {
             "name": "Mac",
             "includePath": [
+                "${workspaceRoot}",
+                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/cores/esp8266",
+                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/tools/sdk/include",
+                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/variants/adafruit",
+                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/ESP8266WiFi/src",
+                "/Users/elee/Documents/Arduino/libraries/Adafruit_GFX_Library",
+                "/Users/elee/Documents/Arduino/libraries/Adafruit_SSD1306",
                 "/Library/Developer/CommandLineTools/usr/include/c++/v1",
                 "/usr/local/include",
                 "/Library/Developer/CommandLineTools/usr/lib/clang/9.0.0/include",
                 "/Library/Developer/CommandLineTools/usr/include",
-                "/usr/include",
-                "${workspaceRoot}",
-                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/cores/esp8266"
+                "/usr/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE"
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": false,
                 "path": [
-                "/Library/Developer/CommandLineTools/usr/include/c++/v1",
-                "/usr/local/include",
-                "/Library/Developer/CommandLineTools/usr/lib/clang/9.0.0/include",
-                "/Library/Developer/CommandLineTools/usr/include",
-                "/usr/include",
-                "${workspaceRoot}",
-                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/cores/esp8266"
-                ]
+                    "${workspaceRoot}",
+                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/cores/esp8266",
+                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/tools/sdk/include",
+                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/variants/adafruit",
+                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/ESP8266WiFi/src",
+                    "/Users/elee/Documents/Arduino/libraries/Adafruit_GFX_Library",
+                    "/Users/elee/Documents/Arduino/libraries/Adafruit_SSD1306",
+                    "/Library/Developer/CommandLineTools/usr/include/c++/v1",
+                    "/usr/local/include",
+                    "/Library/Developer/CommandLineTools/usr/lib/clang/9.0.0/include",
+                    "/Library/Developer/CommandLineTools/usr/include",
+                    "/usr/include"
+                    ]
             },
             "intelliSenseMode": "clang-x64",
             "macFrameworkPath": [
