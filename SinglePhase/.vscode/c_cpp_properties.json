@@ -8,6 +8,7 @@
                 "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/tools/sdk/include",
                 "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/variants/adafruit",
                 "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/ESP8266WiFi/src",
+                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/ESP8266HTTPClient/src",
                 "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/SPI",
                 "/Users/elee/Documents/Arduino/libraries/Adafruit_GFX_Library",
                 "/Users/elee/Documents/Arduino/libraries/Adafruit_SSD1306",
@@ -15,7 +16,8 @@
                 "/usr/local/include",
                 "/Library/Developer/CommandLineTools/usr/lib/clang/9.0.0/include",
                 "/Library/Developer/CommandLineTools/usr/include",
-                "/usr/include"
+                "/usr/include",
+                "/Users/elee/Documents/Arduino/libraries/ArduinoJson/src"
             ],
             "defines": [
                 "_DEBUG",
@@ -30,6 +32,7 @@
                     "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/tools/sdk/include",
                     "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/variants/adafruit",
                     "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/ESP8266WiFi/src",
+                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/ESP8266HTTPClient/src",
                     "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/SPI",
                     "/Users/elee/Documents/Arduino/libraries/Adafruit_GFX_Library",
                     "/Users/elee/Documents/Arduino/libraries/Adafruit_SSD1306",
@@ -37,8 +40,9 @@
                     "/usr/local/include",
                     "/Library/Developer/CommandLineTools/usr/lib/clang/9.0.0/include",
                     "/Library/Developer/CommandLineTools/usr/include",
-                    "/usr/include"
-                    ]
+                    "/usr/include",
+                    "/Users/elee/Documents/Arduino/libraries/ArduinoJson/src"
+                ]
             },
             "intelliSenseMode": "clang-x64",
             "macFrameworkPath": [

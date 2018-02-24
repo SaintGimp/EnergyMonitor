@@ -1,4 +1,5 @@
-#include "ESP8266WiFi.h"
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -10,6 +11,10 @@ Adafruit_SSD1306 display(OLED_RESET);
   #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
+#include "secrets.h"
+
+#include <ArduinoJson.h>
+
 #include "ATM90E26_SPI.h"
 #include "ATM90E26.h"
 ATM90E26_SPI atm90e26_spi(15);
@@ -20,13 +25,22 @@ void setup()
   Serial.begin(115200);
   Serial.println();
 
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
-
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.display();
-  delay(1000);
+  delay(500);
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("Connecting to wifi...");
+  display.display();
+
+  WiFi.begin(wifiSSID, wifiPassword);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+  }
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -50,8 +64,9 @@ void setup()
   settings.reportedEnergy_watthours = 11.42;
 
   atm90e26.Initialize(settings);
-
-  calibrateEnergyGain(60);
+  // TODO: do we need to wait until the device stabilizes?
+  // Do we need to zero out energy counter?
+  //calibrateEnergyGain(60);
 }
 
 void loop()
@@ -67,6 +82,8 @@ void loop()
   displayReading("Active power: ", activePower);
   displayReading("Power factor: ", powerFactor);
   displayReading("Energy: ", importedEnergy);
+
+  uploadData(lineVoltage, lineCurrent, activePower, powerFactor, importedEnergy);
 }
 
 void displayReading(const char* label, double value)
@@ -77,6 +94,39 @@ void displayReading(const char* label, double value)
   display.println(value);
   display.display();
   delay(2000);
+}
+
+void uploadData(double lineVoltage, double lineCurrent, double activePower, double powerFactor, double importedEnergy)
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("Not connected, can't upload!");
+  }
+
+  HTTPClient http;
+  http.begin(logstashUrl);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader(keyHeader, logstashKey);
+
+  const size_t bufferSize = JSON_OBJECT_SIZE(5);
+  StaticJsonBuffer<bufferSize> jsonBuffer;
+
+  JsonObject& root = jsonBuffer.createObject();
+  root["lineVoltage"] = lineVoltage;
+  root["lineCurrent"] = lineCurrent;
+  root["activePower"] = activePower;
+  root["powerFactor"] = powerFactor;
+  root["importedEnergy"] = importedEnergy;
+
+  String payload;
+  root.printTo(payload);
+
+  int httpCode = http.POST(payload);
+
+  if (httpCode < 200 || httpCode >= 300)
+  {
+    Serial.println("Failed to upload, status code " + httpCode);
+  }
 }
 
 void calibrateEnergyGain(unsigned long calibrationLengthInSeconds)
