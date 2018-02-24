@@ -17,11 +17,12 @@
 #include <Arduino.h>
 #include "ATM90E26_Transport.h"
 
+#define PULSE_CONSTANT 10000
+
 struct ATM90E26_CalibrationSettings
 {
 	// PL_Constant
 	double referenceVoltage_volts;
-	double baseCurrent_amps;
 	double currentTransformerRange_amps;
 	double currentTransformerOutput_milliamps;
 	double currentBurdenResistor_ohms;
@@ -34,6 +35,8 @@ struct ATM90E26_CalibrationSettings
 	double reportedVoltage_volts;
 	double actualMainsCurrent_amps;
 	double reportedCurrent_amps;
+	double actualEnergy_watthours;
+	double reportedEnergy_watthours;
 };
 
 class ATM90E26
@@ -51,6 +54,7 @@ class ATM90E26
 		double GetImportEnergy();
 		double GetExportEnergy();
 	private:
+
 		ATM90E26_Transport& transport;
 };
 

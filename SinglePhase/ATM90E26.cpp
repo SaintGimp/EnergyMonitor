@@ -32,32 +32,19 @@ void ATM90E26::Initialize(ATM90E26_CalibrationSettings settings)
 	transport.Communicate(0, SagTh, 0x1F2F); // Voltage sag threshhold
 
 	//Set metering calibration values
+  double referenceCurrent_amps = 10;
   double milliampsPerAmp = settings.currentTransformerOutput_milliamps / settings.currentTransformerRange_amps;
-  double expectedCurrentSampleVoltage_millivolts = milliampsPerAmp * settings.baseCurrent_amps * settings.currentBurdenResistor_ohms;
-  Serial.print("expectedCurrentSampleVoltage_millivolts = ");
-  Serial.println(expectedCurrentSampleVoltage_millivolts);
-
+  double expectedCurrentSampleVoltage_millivolts = milliampsPerAmp * referenceCurrent_amps * settings.currentBurdenResistor_ohms;
   double expectedVoltageSampleVoltage_millivolts = 1000 * settings.voltageTransformerOutput_volts * (settings.voltageDividerResistor2_ohms / (settings.voltageDividerResistor1_ohms + settings.voltageDividerResistor2_ohms));
-  Serial.print("expectedVoltageSampleVoltage_millivolts = ");
-  Serial.println(expectedVoltageSampleVoltage_millivolts);
 
   int currentAmplifierGain = 1;
-  int pulseConstant = 60000;
-  unsigned long plConstant = 838860800 * ((currentAmplifierGain * expectedCurrentSampleVoltage_millivolts * expectedVoltageSampleVoltage_millivolts) / (pulseConstant * settings.referenceVoltage_volts * settings.baseCurrent_amps));
-  // TODO: There was something about making this a multiple of 4?
-  Serial.print("plConstant = ");
-  Serial.println(plConstant, HEX);
+  unsigned long plConstant = 838860800 * ((currentAmplifierGain * expectedCurrentSampleVoltage_millivolts * expectedVoltageSampleVoltage_millivolts) / (PULSE_CONSTANT * settings.referenceVoltage_volts * referenceCurrent_amps));
+  // TODO: There was something in the datasheet about making this a multiple of 4?
 
   unsigned short startupPowerThreshold = 93.2067556 * currentAmplifierGain * expectedCurrentSampleVoltage_millivolts * expectedVoltageSampleVoltage_millivolts * 0.004;
-  Serial.print("startupPowerThreshold = ");
-  Serial.println(startupPowerThreshold, HEX);
 
-  double expectedEnergy = 14.1417;
-  double actualEnergy = 11.70;
-  double e = -((expectedEnergy - actualEnergy) / expectedEnergy);
+  double e = -((settings.actualEnergy_watthours - settings.reportedEnergy_watthours) / settings.actualEnergy_watthours);
   double ratio = -e / (1 + e);
-  Serial.print("ratio = ");
-  Serial.println(ratio, HEX);
   unsigned short lGain;
   if (ratio > 0)
   {
@@ -67,12 +54,10 @@ void ATM90E26::Initialize(ATM90E26_CalibrationSettings settings)
   {
     lGain = pow(2, 16) + (ratio * pow(2, 15));
   }
-  if (actualEnergy == 0)
+  if (settings.reportedEnergy_watthours == 0)
   {
     lGain = 0;
   }
-  Serial.print("lGain = ");
-  Serial.println(lGain, HEX);
 
   transport.Communicate(0, CalStart, 0x5678); // Metering calibration startup command. Register 21 to 2B need to be set
   transport.Communicate(0, PLconstH, highWord(plConstant)); // PL Constant MSB
@@ -86,9 +71,6 @@ void ATM90E26::Initialize(ATM90E26_CalibrationSettings settings)
   transport.Communicate(0, MMode, 0x9422); // Metering Mode Configuration. All defaults. See pg 31 of datasheet.
   transport.Communicate(0, CSOne, transport.Communicate(1, CSOne, 0x0000)); //Write CSOne, as self calculated
   
-  Serial.print("Checksum 1:");
-  Serial.println(transport.Communicate(1, CSOne, 0x0000), HEX); // Checksum 1. Needs to be calculated based off the above values.
-
   // Set measurement calibration values
   
   transport.Communicate(0, AdjStart, 0x5678); // Measurement calibration startup command, registers 31-3A
@@ -107,10 +89,7 @@ void ATM90E26::Initialize(ATM90E26_CalibrationSettings settings)
   transport.Communicate(0, PoffsetL, 0x0000); // L line active power offset
   transport.Communicate(0, QoffsetL, 0x0000); // L line reactive power offset
   transport.Communicate(0, CSTwo, transport.Communicate(1,CSTwo,0x0000)); // Write CSTwo, as self calculated
-  
-  Serial.print("Checksum 2:");
-  Serial.println(transport.Communicate(1,CSTwo,0x0000),HEX);    //Checksum 2. Needs to be calculated based off the above values.
-  
+    
   transport.Communicate(0,CalStart,0x8765); //Checks correctness of 21-2B registers and starts normal metering if ok
   transport.Communicate(0,AdjStart,0x8765); //Checks correctness of 31-3A registers and starts normal measurement  if ok
 
@@ -154,22 +133,24 @@ double ATM90E26::GetFrequency(){
 double ATM90E26::GetPowerFactor(){
 	short int pf= (short int)transport.Communicate(1,PowerF,0xFFFF); //MSB is signed bit
 	//if negative
-	if(pf&0x8000){
-		pf=(pf&0x7FFF)*-1;
+	if (pf&0x8000) {
+		pf = (pf&0x7FFF) * -1;
 	}
-	return (double)pf/1000;
+	return (double)pf / 1000;
 }
 
 double ATM90E26::GetImportEnergy(){
-	//Register is cleared after reading
-	unsigned short ienergy=transport.Communicate(1,APenergy,0xFFFF);
-	return (double)ienergy / 600000; //response is in "0.1 pulse", returns kWh if PL constant set to 1000imp/kWh
+	// Register is cleared after reading
+  // response is in "0.1 pulse"
+	unsigned short ienergy = transport.Communicate(1, APenergy, 0xFFFF);
+	return (double)ienergy / (PULSE_CONSTANT * 10); // return value is in kWh 
 }
 
 double ATM90E26::GetExportEnergy(){
-	//Register is cleared after reading
-	unsigned short eenergy=transport.Communicate(1,ANenergy,0xFFFF);
-	return (double)eenergy*0.0001; //returns kWh if PL constant set to 1000imp/kWh
+	// Register is cleared after reading
+  // response is in "0.1 pulse"
+	unsigned short eenergy = transport.Communicate(1, ANenergy, 0xFFFF);
+	return (double)eenergy / (PULSE_CONSTANT * 10); // return value is in kWh
 }
 
 unsigned short ATM90E26::GetSysStatus(){
