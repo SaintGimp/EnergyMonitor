@@ -18,13 +18,27 @@ Adafruit_SSD1306 display(OLED_RESET);
 
 #include <ArduinoJson.h>
 
-#include <Ticker.h>
-Ticker updateTicker;
+#include <TaskScheduler.h>
+#include <TaskSchedulerDeclarations.h>
+void updateCallback();
+Task updateTask(1000, TASK_FOREVER, &updateCallback);
+Scheduler runner;
 
 #include "ATM90E26_SPI.h"
 #include "ATM90E26.h"
-ATM90E26_SPI atm90e26_spi(0);
-ATM90E26 atm90e26(atm90e26_spi);
+ATM90E26_SPI atm90e26_spi_1(15);
+ATM90E26 atm90e26_1(atm90e26_spi_1);
+ATM90E26_SPI atm90e26_spi_2(0);
+ATM90E26 atm90e26_2(atm90e26_spi_2);
+
+struct EnergyReadings
+{
+  double lineVoltage;
+  double lineCurrent;
+  double activePower;
+  double powerFactor;
+  double importedEnergy;
+};
 
 void setup()
 {
@@ -53,45 +67,66 @@ void setup()
   OTA.onMessage([](char *message, int line) {
     Serial.println(message);
   });
-  OTA.setup(wifiSSID, wifiPassword, "EnergyMonitor");
+  OTA.setup((char*)wifiSSID, (char*)wifiPassword, "EnergyMonitor");
 
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println("Connected.");
   display.display();
 
-  updateTicker.attach(1, update);
+  runner.init();
+  runner.addTask(updateTask);
+  updateTask.enable();
 
-  // Zero out energy counter
-  atm90e26.GetImportEnergy();
+  // Zero out energy counters
+  atm90e26_1.GetImportEnergy();
+  atm90e26_2.GetImportEnergy();
 }
 
 void loop()
 {
   OTA.loop();
+  runner.execute();
 }
 
-void update()
+void updateCallback()
 {
-  double lineVoltage = atm90e26.GetLineVoltage();
-  double lineCurrent = atm90e26.GetLineCurrent();
-  double activePower = atm90e26.GetActivePower();
-  double powerFactor = atm90e26.GetPowerFactor();
-  double importedEnergy = atm90e26.GetImportEnergy() * 1000;
+  EnergyReadings readings_1;
+  readings_1.lineVoltage = atm90e26_1.GetLineVoltage();
+  readings_1.lineCurrent = atm90e26_1.GetLineCurrent();
+  readings_1.activePower = atm90e26_1.GetActivePower();
+  readings_1.powerFactor = atm90e26_1.GetPowerFactor();
+  readings_1.importedEnergy = atm90e26_1.GetImportEnergy() * 1000;
+  EnergyReadings readings_2;
+  readings_2.lineVoltage = atm90e26_2.GetLineVoltage();
+  readings_2.lineCurrent = atm90e26_2.GetLineCurrent();
+  readings_2.activePower = atm90e26_2.GetActivePower();
+  readings_2.powerFactor = atm90e26_2.GetPowerFactor();
+  readings_2.importedEnergy = atm90e26_2.GetImportEnergy() * 1000;
 
   display.clearDisplay();
   display.setCursor(0, 0);
+
   display.print("V: ");
-  display.print(lineVoltage);
+  display.print(readings_1.lineVoltage);
   display.print(" C: ");
-  display.println(lineCurrent);
+  display.println(readings_1.lineCurrent);
   display.print("P: ");
-  display.print(activePower);
+  display.print(readings_1.activePower);
   display.print(" PF: ");
-  display.println(powerFactor);
+  display.println(readings_1.powerFactor);
+  display.print("V: ");
+  display.print(readings_2.lineVoltage);
+  display.print(" C: ");
+  display.println(readings_2.lineCurrent);
+  display.print("P: ");
+  display.print(readings_2.activePower);
+  display.print(" PF: ");
+  display.print(readings_2.powerFactor);
+  
   display.display();
 
-  //uploadData(lineVoltage, lineCurrent, activePower, powerFactor, importedEnergy);
+  uploadData(readings_1, readings_2);
 }
 
 void initializeEnergyMonitor()
@@ -112,32 +147,38 @@ void initializeEnergyMonitor()
   settings.actualEnergy_watthours = 13.9;
   settings.reportedEnergy_watthours = 11.42;
 
-  atm90e26.Initialize(settings);
+  atm90e26_1.Initialize(settings);
+
+  settings.referenceVoltage_volts = 120;
+  settings.currentTransformerRange_amps = 100;
+  settings.currentTransformerOutput_milliamps = 50;
+  settings.currentBurdenResistor_ohms = 12;
+  settings.voltageTransformerOutput_volts = 12.5;
+  settings.voltageDividerResistor1_ohms = 100000;
+  settings.voltageDividerResistor2_ohms = 1000;
+
+  settings.actualMainsVoltage_volts = 120.8;
+  settings.reportedVoltage_volts = 103.65;
+  settings.actualMainsCurrent_amps = 7.20;
+  settings.reportedCurrent_amps = 7.83;
+  settings.actualEnergy_watthours = 13.9;
+  settings.reportedEnergy_watthours = 11.42;
+
+  atm90e26_2.Initialize(settings);
 
   // TODO: do we need to wait until the device stabilizes?
   // Do we need to zero out energy counter?
   //calibrateEnergyGain(60);
 }
 
-void displayReading(const char* label, double value)
-{
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print(label);
-  display.println(value);
-  display.display();
-  delay(2000);
-}
-
-void uploadData(double lineVoltage, double lineCurrent, double activePower, double powerFactor, double importedEnergy)
+void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
 {
   if (WiFi.status() != WL_CONNECTED)
   {
-        display.clearDisplay();
+    display.clearDisplay();
     display.setCursor(0, 0);
-    display.println("Not connected, can't upload!");
+    display.println("Not connected!");
     display.display();
-    delay(1000);
   }
 
   HTTPClient http;
@@ -145,15 +186,20 @@ void uploadData(double lineVoltage, double lineCurrent, double activePower, doub
   http.addHeader("Content-Type", "application/json");
   http.addHeader(keyHeader, logstashKey);
 
-  const size_t bufferSize = JSON_OBJECT_SIZE(5);
+  const size_t bufferSize = JSON_OBJECT_SIZE(10);
   StaticJsonBuffer<bufferSize> jsonBuffer;
 
   JsonObject& root = jsonBuffer.createObject();
-  root["lineVoltage"] = lineVoltage;
-  root["lineCurrent"] = lineCurrent;
-  root["activePower"] = activePower;
-  root["powerFactor"] = powerFactor;
-  root["importedEnergy"] = importedEnergy;
+  root["lineVoltage1"] = readings_1.lineVoltage;
+  root["lineCurrent1"] = readings_1.lineCurrent;
+  root["activePower1"] = readings_1.activePower;
+  root["powerFactor1"] = readings_1.powerFactor;
+  root["importedEnergy1"] = readings_1.importedEnergy;
+  root["lineVoltage2"] = readings_2.lineVoltage;
+  root["lineCurrent2"] = readings_2.lineCurrent;
+  root["activePower2"] = readings_2.activePower;
+  root["powerFactor2"] = readings_2.powerFactor;
+  root["importedEnergy2"] = readings_2.importedEnergy;
 
   String payload;
   root.printTo(payload);
@@ -164,18 +210,9 @@ void uploadData(double lineVoltage, double lineCurrent, double activePower, doub
   {
     display.clearDisplay();
     display.setCursor(0, 0);
-    display.println("Failed to upload, status code " + httpCode);
+    display.print("Status code ");
+    display.println(httpCode);
     display.display();
-    delay(1000);
-  }
-  else
-  {
-        display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println("Uploaded");
-    display.display();
-    delay(1000);
-
   }
 }
 
@@ -190,7 +227,7 @@ void calibrateEnergyGain(unsigned long calibrationLengthInSeconds)
   double reportedEnery_watthours = 0;
 
   // Clear the energy counter
-  atm90e26.GetImportEnergy();
+  atm90e26_1.GetImportEnergy();
 
   unsigned long beginTime = millis();
   for (int i = 0; i < calibrationLengthInSeconds; i++)
@@ -201,11 +238,11 @@ void calibrateEnergyGain(unsigned long calibrationLengthInSeconds)
     unsigned long sleepLength = max(nextReadTime - millis(), (unsigned long)0);
     delay(sleepLength);
 
-    double lineVoltage = atm90e26.GetLineVoltage();
-    double lineCurrent = atm90e26.GetLineCurrent();
+    double lineVoltage = atm90e26_1.GetLineVoltage();
+    double lineCurrent = atm90e26_1.GetLineCurrent();
 
     actualEnergy_watthours += (lineVoltage * lineCurrent) / 3600.0;
-    reportedEnery_watthours += atm90e26.GetImportEnergy() * 1000.0;
+    reportedEnery_watthours += atm90e26_1.GetImportEnergy() * 1000.0;
 
     display.clearDisplay();
     display.setCursor(0, 0);

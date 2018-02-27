@@ -20,7 +20,8 @@
                 "/usr/include",
                 "/Users/elee/Documents/Arduino/libraries/ArduinoJson/src",
                 "/Users/elee/Documents/Arduino/libraries/JeVe_EasyOTA/src",
-                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/Ticker"
+                "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/Ticker",
+                "/Users/elee/Documents/Arduino/libraries/TaskScheduler/src"
             ],
             "defines": [
                 "_DEBUG",
@@ -47,7 +48,8 @@
                     "/usr/include",
                     "/Users/elee/Documents/Arduino/libraries/ArduinoJson/src",
                     "/Users/elee/Documents/Arduino/libraries/JeVe_EasyOTA/src",
-                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/Ticker"
+                    "/Users/elee/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.0/libraries/Ticker",
+                    "/Users/elee/Documents/Arduino/libraries/TaskScheduler/src"
                 ]
             },
             "intelliSenseMode": "clang-x64",
