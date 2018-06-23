@@ -38,6 +38,7 @@ struct EnergyReadings
   double activePower;
   double powerFactor;
   double importedEnergy;
+  double exportedEnergy;
 };
 
 void setup()
@@ -63,6 +64,7 @@ void setup()
   {
     delay(500);
   }
+  WiFi.setAutoReconnect(true);
 
   OTA.onMessage([](char *message, int line) {
     Serial.println(message);
@@ -81,6 +83,8 @@ void setup()
   // Zero out energy counters
   atm90e26_1.GetImportEnergy();
   atm90e26_2.GetImportEnergy();
+  atm90e26_1.GetExportEnergy();
+  atm90e26_2.GetExportEnergy();
 }
 
 void loop()
@@ -97,33 +101,17 @@ void updateCallback()
   readings_1.activePower = atm90e26_1.GetActivePower();
   readings_1.powerFactor = atm90e26_1.GetPowerFactor();
   readings_1.importedEnergy = atm90e26_1.GetImportEnergy() * 1000;
+  readings_1.exportedEnergy = atm90e26_1.GetExportEnergy() * 1000;
   EnergyReadings readings_2;
   readings_2.lineVoltage = atm90e26_2.GetLineVoltage();
   readings_2.lineCurrent = atm90e26_2.GetLineCurrent();
   readings_2.activePower = atm90e26_2.GetActivePower();
   readings_2.powerFactor = atm90e26_2.GetPowerFactor();
   readings_2.importedEnergy = atm90e26_2.GetImportEnergy() * 1000;
+  readings_2.exportedEnergy = atm90e26_2.GetExportEnergy() * 1000;
 
   display.clearDisplay();
   display.setCursor(0, 0);
-
-  display.print("V: ");
-  display.print(readings_1.lineVoltage);
-  display.print(" C: ");
-  display.println(readings_1.lineCurrent);
-  display.print("P: ");
-  display.print(readings_1.activePower);
-  display.print(" PF: ");
-  display.println(readings_1.powerFactor);
-  display.print("V: ");
-  display.print(readings_2.lineVoltage);
-  display.print(" C: ");
-  display.println(readings_2.lineCurrent);
-  display.print("P: ");
-  display.print(readings_2.activePower);
-  display.print(" PF: ");
-  display.print(readings_2.powerFactor);
-  
   display.display();
 
   uploadData(readings_1, readings_2);
@@ -173,47 +161,66 @@ void initializeEnergyMonitor()
 
 void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
 {
-  if (WiFi.status() != WL_CONNECTED)
+  int httpCode = 0;
+
+  do
   {
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println("Not connected!");
-    display.display();
-  }
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Not connected!");
+      display.display();
 
-  HTTPClient http;
-  http.begin(logstashUrl);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader(keyHeader, logstashKey);
+      delay(1000);
 
-  const size_t bufferSize = JSON_OBJECT_SIZE(10);
-  StaticJsonBuffer<bufferSize> jsonBuffer;
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.display();
 
-  JsonObject& root = jsonBuffer.createObject();
-  root["lineVoltage1"] = readings_1.lineVoltage;
-  root["lineCurrent1"] = readings_1.lineCurrent;
-  root["activePower1"] = readings_1.activePower;
-  root["powerFactor1"] = readings_1.powerFactor;
-  root["importedEnergy1"] = readings_1.importedEnergy;
-  root["lineVoltage2"] = readings_2.lineVoltage;
-  root["lineCurrent2"] = readings_2.lineCurrent;
-  root["activePower2"] = readings_2.activePower;
-  root["powerFactor2"] = readings_2.powerFactor;
-  root["importedEnergy2"] = readings_2.importedEnergy;
+      continue;
+    }
 
-  String payload;
-  root.printTo(payload);
+    HTTPClient http;
+    http.begin(logstashUrl);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader(keyHeader, logstashKey);
 
-  int httpCode = http.POST(payload);
+    const size_t bufferSize = JSON_OBJECT_SIZE(10);
+    StaticJsonBuffer<bufferSize> jsonBuffer;
 
-  if (httpCode < 200 || httpCode >= 300)
-  {
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.print("Status code ");
-    display.println(httpCode);
-    display.display();
-  }
+    JsonObject& root = jsonBuffer.createObject();
+    root["lineVoltage1"] = readings_1.lineVoltage;
+    root["lineCurrent1"] = readings_1.lineCurrent;
+    root["activePower1"] = readings_1.activePower;
+    root["powerFactor1"] = readings_1.powerFactor;
+    root["importedEnergy1"] = readings_1.importedEnergy;
+    root["lineVoltage2"] = readings_2.lineVoltage;
+    root["lineCurrent2"] = readings_2.lineCurrent;
+    root["activePower2"] = readings_2.activePower;
+    root["powerFactor2"] = readings_2.powerFactor;
+    root["importedEnergy2"] = readings_2.importedEnergy;
+
+    String payload;
+    root.printTo(payload);
+
+    httpCode = http.POST(payload);
+
+    if (httpCode < 200 || httpCode >= 300)
+    {
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.print("Status code ");
+      display.println(httpCode);
+      display.display();
+
+      delay(1000);
+
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.display();
+    }
+  } while (httpCode < 200 || httpCode >= 300);
 }
 
 void calibrateEnergyGain(unsigned long calibrationLengthInSeconds)
