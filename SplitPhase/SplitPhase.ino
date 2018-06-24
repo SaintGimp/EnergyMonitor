@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <Wire.h>
 
 #include <JeVe_EasyOTA.h>
 EasyOTA OTA;
@@ -30,6 +31,8 @@ ATM90E26_SPI atm90e26_spi_1(15);
 ATM90E26 atm90e26_1(atm90e26_spi_1);
 ATM90E26_SPI atm90e26_spi_2(0);
 ATM90E26 atm90e26_2(atm90e26_spi_2);
+
+#define IOEXPANDER_ADDRESS 0x08
 
 struct EnergyReadings
 {
@@ -102,6 +105,7 @@ void updateCallback()
   readings_1.powerFactor = atm90e26_1.GetPowerFactor();
   readings_1.importedEnergy = atm90e26_1.GetImportEnergy() * 1000;
   readings_1.exportedEnergy = atm90e26_1.GetExportEnergy() * 1000;
+  
   EnergyReadings readings_2;
   readings_2.lineVoltage = atm90e26_2.GetLineVoltage();
   readings_2.lineCurrent = atm90e26_2.GetLineCurrent();
@@ -110,11 +114,71 @@ void updateCallback()
   readings_2.importedEnergy = atm90e26_2.GetImportEnergy() * 1000;
   readings_2.exportedEnergy = atm90e26_2.GetExportEnergy() * 1000;
 
+  float aux1 = ReadCurrent(0);
+  float aux2 = 0; //ReadCurrent(1);
+  
   display.clearDisplay();
   display.setCursor(0, 0);
   display.display();
 
-  uploadData(readings_1, readings_2);
+  Serial.print("AUX1: ");
+  Serial.println(aux1);
+  Serial.print("AUX2: ");
+  Serial.println(aux2);
+
+  //uploadData(readings_1, readings_2);
+}
+
+float ReadCurrent(byte channel)
+{
+  Wire.beginTransmission(IOEXPANDER_ADDRESS);
+  // Point to the channel register
+  Wire.write(0);
+  // Start an ADC conversion
+  Wire.write(1<<7 | channel);
+  Wire.endTransmission();
+
+  WaitForResult();
+  
+  Wire.beginTransmission(IOEXPANDER_ADDRESS);
+  // Set the register to the first output byte
+  Wire.write(byte(0x01));
+  Wire.endTransmission();
+
+  // Request four bytes
+  if (Wire.requestFrom(IOEXPANDER_ADDRESS, 4) < 4)
+  {
+    return -1;
+  }
+
+  float value;
+  byte* valueAsBytes = (byte*)&value;
+
+  *valueAsBytes = Wire.read();
+  *(valueAsBytes + 1) = Wire.read();
+  *(valueAsBytes + 2) = Wire.read();
+  *(valueAsBytes + 3) = Wire.read();
+
+  return value;
+}
+
+void WaitForResult()
+{
+  byte status = 1 << 7;
+
+  // The current converter clears the status bit when conversion is done
+  while (bitRead(status, 7) == 1)
+  {
+    delay(25);
+    Wire.beginTransmission(IOEXPANDER_ADDRESS);
+    Wire.write(0);
+    Wire.endTransmission();
+
+    Wire.requestFrom(IOEXPANDER_ADDRESS, 1);
+    status = Wire.read();
+    Serial.print("status: ");
+    Serial.println(status);
+  }
 }
 
 void initializeEnergyMonitor()
