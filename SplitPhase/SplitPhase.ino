@@ -32,7 +32,13 @@ ATM90E26 atm90e26_1(atm90e26_spi_1);
 ATM90E26_SPI atm90e26_spi_2(0);
 ATM90E26 atm90e26_2(atm90e26_spi_2);
 
-#define IOEXPANDER_ADDRESS 0x08
+#define CURRENT_MONITOR_ADDRESS 0x08
+#define SUPPLY_VOLTAGE_REGISTER 0
+#define ICAL0_REGISTER 2
+#define ICAL1_REGISTER 4
+#define CHANNEL0_REGISTER 6
+#define CHANNEL1_REGISTER 8
+
 
 struct EnergyReadings
 {
@@ -42,6 +48,7 @@ struct EnergyReadings
   double powerFactor;
   double importedEnergy;
   double exportedEnergy;
+  double auxCurrent;
 };
 
 void setup()
@@ -54,6 +61,7 @@ void setup()
   delay(500);
 
   initializeEnergyMonitor();
+  initializeCurrentMonitor();
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -105,6 +113,7 @@ void updateCallback()
   readings_1.powerFactor = atm90e26_1.GetPowerFactor();
   readings_1.importedEnergy = atm90e26_1.GetImportEnergy() * 1000;
   readings_1.exportedEnergy = atm90e26_1.GetExportEnergy() * 1000;
+  readings_1.auxCurrent = ReadCurrent(CHANNEL0_REGISTER);
   
   EnergyReadings readings_2;
   readings_2.lineVoltage = atm90e26_2.GetLineVoltage();
@@ -113,72 +122,34 @@ void updateCallback()
   readings_2.powerFactor = atm90e26_2.GetPowerFactor();
   readings_2.importedEnergy = atm90e26_2.GetImportEnergy() * 1000;
   readings_2.exportedEnergy = atm90e26_2.GetExportEnergy() * 1000;
-
-  float aux1 = ReadCurrent(0);
-  float aux2 = 0; //ReadCurrent(1);
+  readings_2.auxCurrent = ReadCurrent(CHANNEL1_REGISTER);
   
   display.clearDisplay();
   display.setCursor(0, 0);
   display.display();
 
-  Serial.print("AUX1: ");
-  Serial.println(aux1);
-  Serial.print("AUX2: ");
-  Serial.println(aux2);
-
-  //uploadData(readings_1, readings_2);
+  uploadData(readings_1, readings_2);
 }
 
-float ReadCurrent(byte channel)
+float ReadCurrent(uint registerAddress)
 {
-  Wire.beginTransmission(IOEXPANDER_ADDRESS);
-  // Point to the channel register
-  Wire.write(0);
-  // Start an ADC conversion
-  Wire.write(1<<7 | channel);
+  // Point to the value we want to read
+  Wire.beginTransmission(CURRENT_MONITOR_ADDRESS);
+  Wire.write(registerAddress);
   Wire.endTransmission();
 
-  WaitForResult();
-  
-  Wire.beginTransmission(IOEXPANDER_ADDRESS);
-  // Set the register to the first output byte
-  Wire.write(byte(0x01));
-  Wire.endTransmission();
-
-  // Request four bytes
-  if (Wire.requestFrom(IOEXPANDER_ADDRESS, 4) < 4)
+  // Request the value for the channel
+  if (Wire.requestFrom(CURRENT_MONITOR_ADDRESS, 2) < 2)
   {
+    //I2C_ClearBus();
+    //Wire.begin();
+    Serial.println("I2C failure");
     return -1;
   }
 
-  float value;
-  byte* valueAsBytes = (byte*)&value;
-
-  *valueAsBytes = Wire.read();
-  *(valueAsBytes + 1) = Wire.read();
-  *(valueAsBytes + 2) = Wire.read();
-  *(valueAsBytes + 3) = Wire.read();
+  float value = (uint)(Wire.read() | Wire.read() << 8) / 1000.0;
 
   return value;
-}
-
-void WaitForResult()
-{
-  byte status = 1 << 7;
-
-  // The current converter clears the status bit when conversion is done
-  while (bitRead(status, 7) == 1)
-  {
-    delay(25);
-    Wire.beginTransmission(IOEXPANDER_ADDRESS);
-    Wire.write(0);
-    Wire.endTransmission();
-
-    Wire.requestFrom(IOEXPANDER_ADDRESS, 1);
-    status = Wire.read();
-    Serial.print("status: ");
-    Serial.println(status);
-  }
 }
 
 void initializeEnergyMonitor()
@@ -223,6 +194,32 @@ void initializeEnergyMonitor()
   //calibrateEnergyGain(60);
 }
 
+void initializeCurrentMonitor()
+{
+  // Values are transferred as uints (float value * 1000)
+  uint supplyVoltage = 3273;  // 3300 nominal, this is the measured value
+  uint calibration0 = 42550;
+  uint calibration1 = 42550;
+
+  Wire.beginTransmission(CURRENT_MONITOR_ADDRESS);
+  Wire.write(SUPPLY_VOLTAGE_REGISTER);
+  Wire.write(lowByte(supplyVoltage));
+  Wire.write(highByte(supplyVoltage));
+  Wire.endTransmission();
+
+  Wire.beginTransmission(CURRENT_MONITOR_ADDRESS);
+  Wire.write(ICAL0_REGISTER);
+  Wire.write(lowByte(calibration0));
+  Wire.write(highByte(calibration0));
+  Wire.endTransmission();
+
+  Wire.beginTransmission(CURRENT_MONITOR_ADDRESS);
+  Wire.write(ICAL1_REGISTER);
+  Wire.write(lowByte(calibration1));
+  Wire.write(highByte(calibration1));
+  Wire.endTransmission();
+}
+
 void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
 {
   int httpCode = 0;
@@ -250,7 +247,7 @@ void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
     http.addHeader("Content-Type", "application/json");
     http.addHeader(keyHeader, logstashKey);
 
-    const size_t bufferSize = JSON_OBJECT_SIZE(10);
+    const size_t bufferSize = JSON_OBJECT_SIZE(12);
     StaticJsonBuffer<bufferSize> jsonBuffer;
 
     JsonObject& root = jsonBuffer.createObject();
@@ -259,11 +256,20 @@ void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
     root["activePower1"] = readings_1.activePower;
     root["powerFactor1"] = readings_1.powerFactor;
     root["importedEnergy1"] = readings_1.importedEnergy;
+    if (readings_1.auxCurrent >= 0)
+    {
+      root["auxCurrent1"] = readings_1.auxCurrent;
+    }
+    
     root["lineVoltage2"] = readings_2.lineVoltage;
     root["lineCurrent2"] = readings_2.lineCurrent;
     root["activePower2"] = readings_2.activePower;
     root["powerFactor2"] = readings_2.powerFactor;
     root["importedEnergy2"] = readings_2.importedEnergy;
+    if (readings_2.auxCurrent >= 0)
+    {
+      root["auxCurrent2"] = readings_2.auxCurrent;
+    }
 
     String payload;
     root.printTo(payload);
@@ -331,4 +337,69 @@ void calibrateEnergyGain(unsigned long calibrationLengthInSeconds)
   display.display();
 
   delay(60 * 1000);
+}
+
+int I2C_ClearBus() {
+  // http://www.forward.com.au/pfod/ArduinoProgramming/I2C_ClearBus/index.html
+
+#if defined(TWCR) && defined(TWEN)
+  TWCR &= ~(_BV(TWEN)); //Disable the Atmel 2-Wire interface so we can control the SDA and SCL pins directly
+#endif
+
+  pinMode(SDA, INPUT_PULLUP); // Make SDA (data) and SCL (clock) pins Inputs with pullup.
+  pinMode(SCL, INPUT_PULLUP);
+
+  delay(2500);  // Wait 2.5 secs. This is strictly only necessary on the first power
+  // up of the DS3231 module to allow it to initialize properly,
+  // but is also assists in reliable programming of FioV3 boards as it gives the
+  // IDE a chance to start uploaded the program
+  // before existing sketch confuses the IDE by sending Serial data.
+
+  boolean SCL_LOW = (digitalRead(SCL) == LOW); // Check is SCL is Low.
+  if (SCL_LOW) { //If it is held low Arduno cannot become the I2C master. 
+    return 1; //I2C bus error. Could not clear SCL clock line held low
+  }
+
+  boolean SDA_LOW = (digitalRead(SDA) == LOW);  // vi. Check SDA input.
+  int clockCount = 20; // > 2x9 clock
+
+  while (SDA_LOW && (clockCount > 0)) { //  vii. If SDA is Low,
+    clockCount--;
+  // Note: I2C bus is open collector so do NOT drive SCL or SDA high.
+    pinMode(SCL, INPUT); // release SCL pullup so that when made output it will be LOW
+    pinMode(SCL, OUTPUT); // then clock SCL Low
+    delayMicroseconds(10); //  for >5uS
+    pinMode(SCL, INPUT); // release SCL LOW
+    pinMode(SCL, INPUT_PULLUP); // turn on pullup resistors again
+    // do not force high as slave may be holding it low for clock stretching.
+    delayMicroseconds(10); //  for >5uS
+    // The >5uS is so that even the slowest I2C devices are handled.
+    SCL_LOW = (digitalRead(SCL) == LOW); // Check if SCL is Low.
+    int counter = 20;
+    while (SCL_LOW && (counter > 0)) {  //  loop waiting for SCL to become High only wait 2sec.
+      counter--;
+      delay(100);
+      SCL_LOW = (digitalRead(SCL) == LOW);
+    }
+    if (SCL_LOW) { // still low after 2 sec error
+      return 2; // I2C bus error. Could not clear. SCL clock line held low by slave clock stretch for >2sec
+    }
+    SDA_LOW = (digitalRead(SDA) == LOW); //   and check SDA input again and loop
+  }
+  if (SDA_LOW) { // still low
+    return 3; // I2C bus error. Could not clear. SDA data line held low
+  }
+
+  // else pull SDA line low for Start or Repeated Start
+  pinMode(SDA, INPUT); // remove pullup.
+  pinMode(SDA, OUTPUT);  // and then make it LOW i.e. send an I2C Start or Repeated start control.
+  // When there is only one I2C master a Start or Repeat Start has the same function as a Stop and clears the bus.
+  /// A Repeat Start is a Start occurring after a Start with no intervening Stop.
+  delayMicroseconds(10); // wait >5uS
+  pinMode(SDA, INPUT); // remove output low
+  pinMode(SDA, INPUT_PULLUP); // and make SDA high i.e. send I2C STOP control.
+  delayMicroseconds(10); // x. wait >5uS
+  pinMode(SDA, INPUT); // and reset pins as tri-state inputs which is the default state on reset
+  pinMode(SCL, INPUT);
+  return 0; // all ok
 }

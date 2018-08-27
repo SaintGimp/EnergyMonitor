@@ -16,6 +16,10 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "vector": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "cstddef": "cpp",
+        "__memory": "cpp",
+        "random": "cpp",
+        "array": "cpp"
     }
 }
