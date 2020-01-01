@@ -8,12 +8,7 @@ EasyOTA OTA;
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #define OLED_RESET 3
-Adafruit_SSD1306 display(OLED_RESET);
-#define LOGO16_GLCD_HEIGHT 16
-#define LOGO16_GLCD_WIDTH  16
-#if (SSD1306_LCDHEIGHT != 32)
-  #error("Height incorrect, please fix Adafruit_SSD1306.h!");
-#endif
+Adafruit_SSD1306 display(128, 32, &Wire, OLED_RESET);
 
 #include "secrets.h"
 
@@ -60,32 +55,47 @@ void setup()
   display.display();
   delay(500);
 
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("OTA set up.\nSetting up monitors...");
+  display.display();
+
   initializeEnergyMonitor();
   initializeCurrentMonitor();
 
   display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("Monitors set up.");
+  display.display();
+
+  display.clearDisplay();
   display.setCursor(0, 0);
   display.println("Connecting to wifi...");
   display.display();
 
-  WiFi.begin(wifiSSID, wifiPassword);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-  }
   WiFi.setAutoReconnect(true);
+  WiFi.begin(wifiSSID, wifiPassword);
+  wl_status_t status;
+  while ((status = (wl_status_t)WiFi.waitForConnectResult()) != WL_CONNECTED)
+  {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("Connecting to wifi...\n");
+    display.print(wl_status_to_string(status));
+    display.display();
+  }
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Wifi connected.\nSetting up OTA...");
+  display.display();
 
   OTA.onMessage([](char *message, int line) {
     Serial.println(message);
   });
   OTA.setup((char*)wifiSSID, (char*)wifiPassword, "EnergyMonitor");
-
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("Connected.");
-  display.display();
 
   runner.init();
   runner.addTask(updateTask);
@@ -102,6 +112,19 @@ void loop()
 {
   OTA.loop();
   runner.execute();
+}
+
+const char* wl_status_to_string(wl_status_t status) {
+  switch (status) {
+    case WL_NO_SHIELD: return "WL_NO_SHIELD";
+    case WL_IDLE_STATUS: return "WL_IDLE_STATUS";
+    case WL_NO_SSID_AVAIL: return "WL_NO_SSID_AVAIL";
+    case WL_SCAN_COMPLETED: return "WL_SCAN_COMPLETED";
+    case WL_CONNECTED: return "WL_CONNECTED";
+    case WL_CONNECT_FAILED: return "WL_CONNECT_FAILED";
+    case WL_CONNECTION_LOST: return "WL_CONNECTION_LOST";
+    case WL_DISCONNECTED: return "WL_DISCONNECTED";
+  }
 }
 
 void updateCallback()
@@ -248,9 +271,9 @@ void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
     http.addHeader(keyHeader, logstashKey);
 
     const size_t bufferSize = JSON_OBJECT_SIZE(12);
-    StaticJsonBuffer<bufferSize> jsonBuffer;
+    StaticJsonDocument<bufferSize> jsonDocument;
 
-    JsonObject& root = jsonBuffer.createObject();
+    JsonObject root = jsonDocument.to<JsonObject>();
     root["lineVoltage1"] = readings_1.lineVoltage;
     root["lineCurrent1"] = readings_1.lineCurrent;
     root["activePower1"] = readings_1.activePower;
@@ -272,7 +295,7 @@ void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
     }
 
     String payload;
-    root.printTo(payload);
+    serializeJson(root, payload);
 
     httpCode = http.POST(payload);
 
