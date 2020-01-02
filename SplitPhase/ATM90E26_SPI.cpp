@@ -37,17 +37,7 @@ unsigned short ATM90E26_SPI::Communicate(unsigned char RW, unsigned char address
     unsigned char* data=(unsigned char*)&val;
     unsigned short output;
     //SPI interface rate is 200 to 160k bps. It Will need to be slowed down for EnergyIC
-    #if !defined(ENERGIA) && !defined(ESP8266) && !defined(ARDUINO_ARCH_SAMD)
     SPISettings settings(200000, MSBFIRST, SPI_MODE3);
-    #endif
-
-    #if defined(ESP8266)
-    SPISettings settings(200000, MSBFIRST, SPI_MODE2);
-    #endif
-
-    #if defined(ARDUINO_ARCH_SAMD)
-    SPISettings settings(200000, MSBFIRST, SPI_MODE3);
-    #endif
    
 	//switch MSB and LSB of value
 	output=(val>>8)|(val<<8);
@@ -61,7 +51,7 @@ unsigned short ATM90E26_SPI::Communicate(unsigned char RW, unsigned char address
     SPI.beginTransaction(settings);
     #endif
     //Disable LoRa chip on M0-LoRa
-    digitalWrite (8,HIGH);     
+    //digitalWrite (8,HIGH);     
     digitalWrite (_cs,LOW);
     delayMicroseconds(10);
     SPI.transfer(address);
@@ -93,7 +83,7 @@ unsigned short ATM90E26_SPI::Communicate(unsigned char RW, unsigned char address
   
 	digitalWrite(_cs,HIGH);
   //Reenable LoRa chip on M0-LoRa
-  digitalWrite(8,LOW);
+  //digitalWrite(8,LOW);
   delayMicroseconds(10);
   #if !defined(ENERGIA)
   SPI.endTransaction();
@@ -104,10 +94,3 @@ unsigned short ATM90E26_SPI::Communicate(unsigned char RW, unsigned char address
 	//Use with transfer16
 	//return val;
 }
-
-
-
-
-
-
-
