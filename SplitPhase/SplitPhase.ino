@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <WiFiClientSecureBearSSL.h>
 #include <Wire.h>
 
 #include <JeVe_EasyOTA.h>
@@ -76,6 +77,7 @@ void setup()
   display.display();
 
   WiFi.setAutoReconnect(true);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.begin(wifiSSID, wifiPassword);
   wl_status_t status;
   while ((status = (wl_status_t)WiFi.waitForConnectResult()) != WL_CONNECTED)
@@ -95,7 +97,7 @@ void setup()
   OTA.onMessage([](char *message, int line) {
     Serial.println(message);
   });
-  OTA.setup((char*)wifiSSID, (char*)wifiPassword, "EnergyMonitor");
+  OTA.setup((char*)wifiSSID, (char*)wifiPassword, (char*)"EnergyMonitor");
 
   runner.init();
   runner.addTask(updateTask);
@@ -125,6 +127,8 @@ const char* wl_status_to_string(wl_status_t status) {
     case WL_CONNECTION_LOST: return "WL_CONNECTION_LOST";
     case WL_DISCONNECTED: return "WL_DISCONNECTED";
   }
+  
+  return "UNKNOWN";
 }
 
 void updateCallback()
@@ -247,73 +251,73 @@ void uploadData(EnergyReadings& readings_1, EnergyReadings& readings_2)
 {
   int httpCode = 0;
 
-  do
+  if (WiFi.status() != WL_CONNECTED)
   {
-    if (WiFi.status() != WL_CONNECTED)
-    {
-      display.clearDisplay();
-      display.setCursor(0, 0);
-      display.println("Not connected!");
-      display.display();
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("Not connected!");
+    display.display();
 
-      delay(1000);
+    delay(1000);
 
-      display.clearDisplay();
-      display.setCursor(0, 0);
-      display.display();
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.display();
 
-      continue;
-    }
+    return;
+  }
 
-    HTTPClient http;
-    http.begin(logstashUrl);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader(keyHeader, logstashKey);
+  BearSSL::WiFiClientSecure client;
+  client.setInsecure();
 
-    const size_t bufferSize = JSON_OBJECT_SIZE(12);
-    StaticJsonDocument<bufferSize> jsonDocument;
+  HTTPClient https;
+  https.begin(client, logstashUrl);
+  https.addHeader("Content-Type", "application/json");
+  https.setAuthorization(logstashUserName, logstashPassword);
 
-    JsonObject root = jsonDocument.to<JsonObject>();
-    root["lineVoltage1"] = readings_1.lineVoltage;
-    root["lineCurrent1"] = readings_1.lineCurrent;
-    root["activePower1"] = readings_1.activePower;
-    root["powerFactor1"] = readings_1.powerFactor;
-    root["importedEnergy1"] = readings_1.importedEnergy;
-    if (readings_1.auxCurrent >= 0)
-    {
-      root["auxCurrent1"] = readings_1.auxCurrent;
-    }
-    
-    root["lineVoltage2"] = readings_2.lineVoltage;
-    root["lineCurrent2"] = readings_2.lineCurrent;
-    root["activePower2"] = readings_2.activePower;
-    root["powerFactor2"] = readings_2.powerFactor;
-    root["importedEnergy2"] = readings_2.importedEnergy;
-    if (readings_2.auxCurrent >= 0)
-    {
-      root["auxCurrent2"] = readings_2.auxCurrent;
-    }
+  const size_t bufferSize = JSON_OBJECT_SIZE(12);
+  StaticJsonDocument<bufferSize> jsonDocument;
 
-    String payload;
-    serializeJson(root, payload);
+  JsonObject root = jsonDocument.to<JsonObject>();
+  root["lineVoltage1"] = readings_1.lineVoltage;
+  root["lineCurrent1"] = readings_1.lineCurrent;
+  root["activePower1"] = readings_1.activePower;
+  root["powerFactor1"] = readings_1.powerFactor;
+  root["importedEnergy1"] = readings_1.importedEnergy;
+  if (readings_1.auxCurrent >= 0)
+  {
+    root["auxCurrent1"] = readings_1.auxCurrent;
+  }
+  
+  root["lineVoltage2"] = readings_2.lineVoltage;
+  root["lineCurrent2"] = readings_2.lineCurrent;
+  root["activePower2"] = readings_2.activePower;
+  root["powerFactor2"] = readings_2.powerFactor;
+  root["importedEnergy2"] = readings_2.importedEnergy;
+  if (readings_2.auxCurrent >= 0)
+  {
+    root["auxCurrent2"] = readings_2.auxCurrent;
+  }
 
-    httpCode = http.POST(payload);
+  String payload;
+  serializeJson(root, payload);
 
-    if (httpCode < 200 || httpCode >= 300)
-    {
-      display.clearDisplay();
-      display.setCursor(0, 0);
-      display.print("Status code ");
-      display.println(httpCode);
-      display.display();
+  httpCode = https.POST(payload);
 
-      delay(1000);
+  if (httpCode < 200 || httpCode >= 300)
+  {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("Status code ");
+    display.println(httpCode);
+    display.display();
 
-      display.clearDisplay();
-      display.setCursor(0, 0);
-      display.display();
-    }
-  } while (httpCode < 200 || httpCode >= 300);
+    delay(1000);
+
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.display();
+  }
 }
 
 void calibrateEnergyGain(unsigned long calibrationLengthInSeconds)
